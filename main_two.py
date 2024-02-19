@@ -85,8 +85,8 @@ def insert_pg(bulk_data: list):
 count = 0
 if __name__ == "__main__":
     with Elasticsearch(
-            hosts="http://10.12.1.51:5200",
-            http_auth=("ingest_ai", "1ngest4i2o23"),
+            hosts="localhost",
+            http_auth=("username", "password"),
             timeout=3600
     ) as es:
         bulk_data = []
