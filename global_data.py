@@ -55,10 +55,15 @@ def query():
         ],
         "query": {
             "bool": {
-                "must": [
+                "should": [
                     {
                         "match": {
                             "category.keyword": "sipri"
+                        }
+                    },
+                    {
+                        "match": {
+                            "category.keyword": "sipri arms transfers database"
                         }
                     }
                 ]
