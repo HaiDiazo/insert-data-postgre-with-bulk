@@ -63,8 +63,8 @@ def insert_pg(data: dict):
 
 if __name__ == "__main__":
     with Elasticsearch(
-            hosts="localhost",
-            http_auth=("username", "password"),
+            hosts="http://10.12.1.51:5200",
+            http_auth=("ingest_ai", "1ngest4i2o23"),
             timeout=3600
     ) as es:
         for hit in scan(client=es, index="production-point-of-interest", query=query(), size=100, request_timeout=3600,

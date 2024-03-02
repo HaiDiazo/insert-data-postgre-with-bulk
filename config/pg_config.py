@@ -5,14 +5,32 @@ from sqlalchemy import URL
 
 class PostgresConfig(object):
 
+    # @staticmethod
+    # def connect():
+    #     conn = psycopg2.connect(database="territorial",
+    #                             host="10.11.2.45",
+    #                             user="postgres",
+    #                             password="t3rr1t0r!4l@2o24",
+    #                             port=5432)
+    #     return conn
+
     @staticmethod
     def connect():
-        conn = psycopg2.connect(database="territorial",
-                                host="10.11.2.45",
+        conn = psycopg2.connect(database="geosense_inter",
+                                host="10.11.2.32",
                                 user="postgres",
-                                password="t3rr1t0r!4l@2o24",
+                                password="m4s51v3pr0f1lin9",
                                 port=5432)
         return conn
+
+    # @staticmethod
+    # def connect():
+    #     conn = psycopg2.connect(database="massivedivtik",
+    #                             host="10.12.120.172",
+    #                             user="postgres",
+    #                             password="M4ss!v4D!vTIK",
+    #                             port=5432)
+    #     return conn
 
     @staticmethod
     def prod_conn_sql_alchemy():

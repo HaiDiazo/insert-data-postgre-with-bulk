@@ -1,9 +1,11 @@
 import time
+import json
 
 from config.pg_config import PostgresConfig
 from elasticsearch import Elasticsearch
 from service.percolator import PercolatorData
 from elasticsearch.helpers import scan
+from shapely.geometry import shape
 
 POINT = [
     'location_coordinate',
@@ -11,14 +13,36 @@ POINT = [
     'country_coordinate',
     'city_coordinate',
     'district_coordinate',
-    'sub_district_coordinate'
+    'sub_district_coordinate',
+    'location'
 ]
+
+INDEX = "global-data*"
+TABLE_NAME = 'military_sipri'
+
+MAPPING = {
+    'menu': None,
+    'value': None,
+    'date_time': None,
+    'id': None,
+    'country': None,
+    'location': None
+}
+
+ES_CONFIG = {
+    'HOST': 'http://192.168.20.21:9200',
+    'USER': 'elastic',
+    'PASS': '3last!c2o22G0s1p'
+}
+
+GEOSHAPE = []
 
 config = {
     'CONFIG': {
-        'FIELD_PERCOLATOR_PROVINSI': 'province_name',
-        'FIELD_PERCOLATOR_CITY': 'city_name',
+        'FIELD_PERCOLATOR_PROVINSI': '',
+        'FIELD_PERCOLATOR_CITY': '',
         'FIELD_PERCOLATOR_POLDA': '',
+        'FIELD_PERCOLATOR_COUNTRIES': 'country',
         'FIELD_PERCOLATOR_POLRES': ''
     }
 }
@@ -26,27 +50,31 @@ config = {
 
 def query():
     return {
+        "_source": [
+            "menu", "value", "date_time", "id", "country", "location"
+        ],
         "query": {
             "bool": {
-                "should": [
+                "must": [
                     {
-                        "query_string": {
-                            "fields": ["name", "subcategory"],
-                            "query": """ "pasar" """
+                        "match": {
+                            "category.keyword": "sipri"
                         }
-                    },
+                    }
+                ]
+            }
+        }
+    }
+
+
+def query_count():
+    return {
+        "query": {
+            "bool": {
+                "must": [
                     {
-                        "terms": {
-                            "subcategory.keyword": [
-                                "pasar"
-                            ]
-                        }
-                    },
-                    {
-                        "terms": {
-                            "category.keyword": [
-                                "shops/store"
-                            ]
+                        "match": {
+                            "category.keyword": "sipri"
                         }
                     }
                 ]
@@ -70,16 +98,31 @@ def check_anomalies_values(key: str, value):
     return key
 
 
+def convert_geoshape_to_wkt(geoshape):
+    geometry = shape(geoshape)
+    return geometry.wkt
+
+
 def geom_parser(key: str, value):
-    if key in POINT and value is not None:
-        return f"POINT({value['lon']} {value['lat']})"
+    if key in POINT and key is not None:
+        if isinstance(value, dict) and key in POINT:
+            return f"POINT({value['lon']} {value['lat']})"
+        elif isinstance(value, list):
+            return f"POINT({value[0]} {value[1]})"
+    elif key in GEOSHAPE and key is not None:
+        if value is not None:
+            return f"{convert_geoshape_to_wkt(value)}"
+    elif isinstance(value, dict):
+        return json.dumps(value)
+    elif isinstance(value, list):
+        return json.dumps(value)
     return value
 
 
 def check_anomalies_parser(key: str, value):
     if value == '':
         return None
-    if isinstance(value, dict):
+    if isinstance(value, dict) and key in POINT:
         if value['lon'] is None or value['lat'] is None:
             return None
     return value
@@ -87,11 +130,11 @@ def check_anomalies_parser(key: str, value):
 
 def get_count():
     with Elasticsearch(
-            hosts="http://10.12.1.51:5200",
-            http_auth=("ingest_ai", "1ngest4i2o23"),
+            hosts=ES_CONFIG['HOST'],
+            http_auth=(ES_CONFIG['USER'], ES_CONFIG['PASS']),
             timeout=3600
     ) as es:
-        count = es.count(body=query(), index='production-point-of-interest')
+        count = es.count(body=query_count(), index=INDEX)
         return count['count']
 
 
@@ -101,7 +144,7 @@ def insert_pg(bulk_data: list):
     cursor = connect.cursor()
 
     data_key = bulk_data[0]
-    query_insert = f"""INSERT INTO point_of_interest_shop ({','.join([key for key, value in data_key.items()])})
+    query_insert = f"""INSERT INTO {TABLE_NAME} ({','.join([key for key, value in data_key.items()])})
                 VALUES"""
     first_values = f"({','.join([geom_point(check_anomalies_values(key, value)) for key, value in data_key.items()])})"
     first_param = tuple([geom_parser(key, check_anomalies_parser(key, value)) for key, value in data_key.items()])
@@ -124,54 +167,20 @@ def insert_pg(bulk_data: list):
 count = 0
 if __name__ == "__main__":
     with Elasticsearch(
-            hosts="http://10.12.1.51:5200",
-            http_auth=("ingest_ai", "1ngest4i2o23"),
+            hosts=ES_CONFIG['HOST'],
+            http_auth=(ES_CONFIG['USER'], ES_CONFIG['PASS']),
             timeout=3600
     ) as es:
         bulk_data = []
         start_time = time.time()
-        for hit in scan(client=es, index="production-point-of-interest", query=query(), size=1000, request_timeout=3600,
+        for hit in scan(client=es, index=INDEX, query=query(), size=1000, request_timeout=3600,
                         scroll='10m'):
             source = hit['_source']
 
-            payload: dict = source
-            location = {}
-            location_payload = {
-                'location_name': location.get('location_name'),
-                'location_code': location.get('location_code'),
-                'location_coordinate': location.get('location_coordinate'),
-                'country_name': location.get('country_name'),
-                'country_code': location.get('country_code'),
-                'country_coordinate': location.get('country_coordinate'),
-                'province_name': location.get('province_name'),
-                'province_coordinate': location.get('province_coordinate'),
-                'city_name': location.get('city_name'),
-                'city_coordinate': location.get('city_coordinate'),
-                'district_name': location.get('district_name'),
-                'district_coordinate': location.get('district_coordinate'),
-                'sub_district_name': location.get('sub_district_name'),
-                'sub_district_coordinate': location.get('sub_district_coordinate'),
-            }
-            if 'location' in source and source['location'] is not None:
-                location = source['location']
-                location_payload = {
-                    'location_name': location.get('location_name'),
-                    'location_code': location.get('location_code'),
-                    'location_coordinate': location.get('location_coordinate'),
-                    'country_name': location.get('country_name'),
-                    'country_code': location.get('country_code'),
-                    'country_coordinate': location.get('country_coordinate'),
-                    'province_name': location.get('province_name'),
-                    'province_coordinate': location.get('province_coordinate'),
-                    'city_name': location.get('city_name'),
-                    'city_coordinate': location.get('city_coordinate'),
-                    'district_name': location.get('district_name'),
-                    'district_coordinate': location.get('district_coordinate'),
-                    'sub_district_name': location.get('sub_district_name'),
-                    'sub_district_coordinate': location.get('sub_district_coordinate'),
-                }
-                del payload['location']
-            payload.update(location_payload)
+            payload = {}
+            for key, _ in MAPPING.items():
+                payload[key] = source.get(key)
+
             bulk_data.append(payload)
             # print(payload)
             if len(bulk_data) == 1000:
